@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>Halloween Hunt Scanner</title>
+<style>
+  :root { --bg:#000; --fg:#f2f5f9; --accent:#ff6a00; }
+  *{box-sizing:border-box} html,body{height:100%;margin:0;background:#000;color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+  .app{position:fixed; inset:0; display:flex; flex-direction:column}
+  .view{position:relative; flex:1; background:#000; overflow:hidden}
+  video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; background:#000}
+  canvas{display:none}
+  .toolbar{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding: max(14px, env(safe-area-inset-top)) 12px 12px 12px;
+    position:absolute; left:0; right:0; top:0; z-index:5;
+    background: linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,0));
+  }
+  .title{font-weight:800; letter-spacing:.3px}
+  .pill{background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12); padding:8px 12px; border-radius:999px; font-weight:700; color:#fff;}
+  .footer{
+    position:absolute; left:0; right:0; bottom:0; z-index:5;
+    padding: 12px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background: linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));
+  }
+  .btn{-webkit-tap-highlight-color:transparent; border:0; border-radius:12px; padding:12px 14px; font-weight:800; background:linear-gradient(135deg, var(--accent), #ff9f1a); color:#111; box-shadow:0 8px 18px rgba(255,106,0,.35);}
+  .status{opacity:.9}
+  .hidden{display:none}
+  .tip{position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; opacity:.9; padding:0 18px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="view">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="toolbar">
+      <div class="title">🎃 Hunt Scanner</div>
+      <div class="pill" id="support">Checking camera…</div>
+    </div>
+    <div class="footer">
+      <div class="status" id="status">Initializing…</div>
+      <button class="btn" id="flashBtn" disabled>Toggle Flash</button>
+    </div>
+    <div class="tip hidden" id="tip">Point the camera at a QR code.<br/>When detected, it will open here in full screen.</div>
+  </div>
+</div>
+
+<script>
+// PWA registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const statusEl = document.getElementById('status');
+const supportEl = document.getElementById('support');
+const tipEl = document.getElementById('tip');
+const flashBtn = document.getElementById('flashBtn');
+
+let stream;
+let scanning = false;
+let detector;
+let track;
+
+async function init(){
+  // Camera permission + stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    status('Camera ready.');
+    supportEl.textContent = 'Camera OK';
+    tipEl.classList.remove('hidden');
+
+    track = stream.getVideoTracks()[0];
+    setupTorch();
+
+    // Use BarcodeDetector if available
+    if ('BarcodeDetector' in window) {
+      detector = new BarcodeDetector({ formats: ['qr_code'] });
+      status('Scanner ready.');
+      scanning = true;
+      detectLoop();
+    } else {
+      status('QR scanner not supported on this device. Use the iPhone Camera to open links, or update iOS.');
+      supportEl.textContent = 'No QR API';
+    }
+  } catch (e) {
+    status('Camera access failed. Check permissions in Settings.');
+    supportEl.textContent = 'No camera';
+  }
+}
+
+function status(msg){ statusEl.textContent = msg; }
+
+async function detectLoop(){
+  if (!scanning) return;
+  try {
+    const barcodes = await detector.detect(video);
+    if (barcodes && barcodes.length){
+      const code = barcodes[0].rawValue;
+      scanning = false;
+      status('QR found. Opening…');
+      // Navigate within PWA so we keep fullscreen
+      window.location.href = code;
+      return;
+    }
+  } catch (e) {
+    // ignore and keep looping
+  }
+  requestAnimationFrame(detectLoop);
+}
+
+// Torch / Flash toggle if supported
+function setupTorch(){
+  if (!track) return;
+  const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+  if ('torch' in capabilities) {
+    flashBtn.disabled = false;
+    let torchOn = false;
+    flashBtn.addEventListener('click', async ()=>{
+      try {
+        torchOn = !torchOn;
+        await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+        flashBtn.textContent = torchOn ? 'Flash On' : 'Toggle Flash';
+      } catch (e) {
+        flashBtn.disabled = true;
+      }
+    });
+  } else {
+    flashBtn.disabled = true;
+  }
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  if (document.hidden) {
+    scanning = false;
+    if (video) video.pause();
+  } else {
+    if (video && stream) { video.play(); }
+    if (detector) { scanning = true; detectLoop(); }
+  }
+});
+
+init();
+</script>
+</body>
+</html>
