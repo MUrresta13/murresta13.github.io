@@ -1,0 +1,39 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>QR Clue</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="gate">
+    <div class="gate-inner card">
+      <div class="gate-title">🎄 QR Clue</div>
+      <div class="gate-sub">Tap Start. Your iPhone will buzz and a quick sparkle animation will play, then the clue text will appear.</div>
+      <button class="btn" onclick="ensureAudio(); startExperience({revealMs: 2600});">Start</button>
+      <div class="small" style="margin-top:8px">Tip: Add to Home Screen for full-screen view.</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div id="anim" class="sparkles hidden" aria-hidden="true">
+        <div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div><div class="dot d4"></div><div class="dot d5"></div>
+      </div>
+
+      <div id="content" class="hidden">
+        <h1 id="title">Clue</h1>
+        <div id="meta" class="meta"></div>
+        <div id="clue" class="clue"></div>
+        <div id="code" class="code"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
