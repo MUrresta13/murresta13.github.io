@@ -1,20 +1,46 @@
-
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>QR Clue</title>
-  <link rel="stylesheet" href="./styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>QR Clue</title>
+<style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#0b0f14;color:#e9f1f7;display:flex;align-items:center;justify-content:center;padding:20px}
+.container{width:100%;max-width:640px}
+.card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:22px 20px;box-shadow:0 12px 28px rgba(0,0,0,.35)}
+h1{font-size:1.15rem;margin:.25rem 0 .75rem;letter-spacing:.3px;opacity:.9}
+.meta{opacity:.8;font-size:.95rem;margin-bottom:10px}
+.clue{font-size:1.1rem;line-height:1.6;white-space:pre-wrap;margin-top:8px}
+.code{margin-top:14px;opacity:.85;font-style:italic}
+.small{font-size:.9rem;opacity:.8}
+.hidden{display:none}
+.btn{-webkit-tap-highlight-color:transparent;display:inline-block;padding:14px 18px;border-radius:12px;border:0;background:#1b9bff;color:#fff;font-weight:700;font-size:1rem;margin-top:10px}
+.btn:active{transform:translateY(1px);opacity:.95}
+/* Sparkle animation */
+.sparkles{position:relative;width:220px;height:220px;margin:4px auto 10px}
+.sparkles .dot{position:absolute;width:6px;height:6px;background:#fff;border-radius:50%;opacity:0;animation:sparkle 1.2s linear infinite}
+.sparkles .d1{top:20%;left:10%;animation-delay:0s}
+.sparkles .d2{top:10%;right:18%;animation-delay:.15s}
+.sparkles .d3{bottom:22%;left:18%;animation-delay:.3s}
+.sparkles .d4{bottom:15%;right:12%;animation-delay:.45s}
+.sparkles .d5{top:45%;left:48%;animation-delay:.6s}
+@keyframes sparkle{0%{transform:scale(.4);opacity:0}15%{opacity:1}100%{transform:scale(2.2);opacity:0}}
+/* Fullscreen gate */
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 0%, #12202a 0%, #0b0f14 55%);z-index:20}
+.gate-inner{text-align:center;max-width:520px;padding:24px}
+.gate-title{font-size:1.6rem;font-weight:800;margin-bottom:10px}
+.gate-sub{opacity:.85;margin-bottom:14px}
+</style>
 </head>
 <body>
   <div id="gate">
     <div class="gate-inner card">
       <div class="gate-title">🎄 QR Clue</div>
       <div class="gate-sub">Tap Start. Your iPhone will buzz and a quick sparkle animation will play, then the clue text will appear.</div>
-      <button class="btn" onclick="ensureAudio(); startExperience({revealMs: 2600});">Start</button>
+      <button id="startBtn" class="btn">Start</button>
       <div class="small" style="margin-top:8px">Tip: Add to Home Screen for full-screen view.</div>
     </div>
   </div>
@@ -24,16 +50,74 @@
       <div id="anim" class="sparkles hidden" aria-hidden="true">
         <div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div><div class="dot d4"></div><div class="dot d5"></div>
       </div>
-
       <div id="content" class="hidden">
-        <h1 id="title">Clue</h1>
-        <div id="meta" class="meta"></div>
-        <div id="clue" class="clue"></div>
-        <div id="code" class="code"></div>
+        <h1 id="title">?</h1>
+        <div id="meta" class="meta">Clue: 25/30   •   Difficulty: 5/6</div>
+        <div id="clue" class="clue">In the sacred alcove where prayers ascend,
+A box of reverence, where solace blends. Gaze upwards,
+where angels might tread, On the right-hand path,
+a clue is spread.
+
+Beyond eye's reach, a festive light gleams,
+Ascend to the top, where the mystery teems.</div>
+        <div id="code" class="code">Code: SugarPlumDreams (December 17th)</div>
       </div>
     </div>
   </div>
 
-  <script src="./app.js"></script>
+<script>
+let audioCtx;
+function ensureAudio(){
+  try{
+    if(!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      console.log('AudioContext created');
+    } else {
+      audioCtx.resume && audioCtx.resume();
+    }
+  }catch(e){ console.log('Audio error', e); }
+}
+function buzz(pattern=[160,110,160]){
+  if(!audioCtx){ console.log('No audioCtx'); return; }
+  let t = audioCtx.currentTime;
+  pattern.forEach((dur,i)=>{
+    const on = i % 2 === 0;
+    if(on){
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type='square'; osc.frequency.value=75;
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.08, t + 0.02);
+      gain.gain.setValueAtTime(0.08, t + (dur/1000) - 0.02);
+      gain.gain.linearRampToValueAtTime(0.001, t + (dur/1000));
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t); osc.stop(t + (dur/1000));
+    }
+    t += dur/1000;
+  });
+}
+
+function showAnimThenText(){
+  // hide gate forcefully
+  const gate = document.getElementById('gate');
+  if(gate){ gate.classList.add('hidden'); gate.style.display='none'; }
+  // show animation
+  const anim = document.getElementById('anim');
+  if(anim){ anim.classList.remove('hidden'); anim.style.display='block'; }
+  setTimeout(()=>{
+    // hide animation and show content
+    if(anim){ anim.classList.add('hidden'); anim.style.display='none'; }
+    const content = document.getElementById('content');
+    if(content){ content.classList.remove('hidden'); content.style.display='block'; }
+  }, 2600);
+}
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  ensureAudio();
+  buzz([160,120,160]);
+  showAnimThenText();
+});
+</script>
 </body>
 </html>
