@@ -16,7 +16,6 @@
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 
-  /* Gate card */
   #gate{
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
     padding:24px; background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%);
@@ -40,8 +39,7 @@
     box-shadow:0 8px 18px rgba(255,106,0,.35), inset 0 1px 0 rgba(255,255,255,.25);
   }
 
-  /* Fullscreen video */
-  #player{ position:fixed; inset:0; background:#000; z-index:20; }
+  #player{ position:fixed; inset:0; background:#000; z-index:20; display:none; }
   video{
     position:absolute; inset:0; width:100%; height:100%;
     object-fit:cover; object-position:center;
@@ -50,10 +48,9 @@
   }
   .fade-out{ opacity:0; }
 
-  /* Clue content */
   #content{
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-    padding:24px; background:#000; z-index:10; /* under video until reveal */
+    padding:24px; background:#000; z-index:10;
     opacity:0; filter: blur(6px); transform: translateY(6px);
     transition: opacity 1.5s ease, filter 1.5s ease, transform 1.5s ease;
   }
@@ -69,12 +66,9 @@
   .clue-meta{opacity:.85;margin-bottom:10px}
   .clue-text{white-space:pre-wrap;line-height:1.65}
   .clue-code{opacity:.9;font-style:italic;margin-top:10px}
-
-  .hidden{display:none}
 </style>
 </head>
 <body>
-  <!-- Gate -->
   <div id="gate">
     <div class="card">
       <div class="title">🎃 Halloween Hunt Start</div>
@@ -83,13 +77,10 @@
     </div>
   </div>
 
-  <!-- Fullscreen Player (video only) -->
-  <div id="player" class="hidden">
-    <!-- IMPORTANT: Put your 25s video next to this file as "halloween.mp4" -->
+  <div id="player">
     <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
   </div>
 
-  <!-- Clue Content (fades in after video) -->
   <div id="content">
     <div class="clue-card">
       <div class="clue-title">?</div>
@@ -114,18 +105,31 @@ const vid = document.getElementById('vid');
 const VIDEO_LEN_MS = 25000; // 25 seconds
 let fadeTimeout = null, endTimeout = null;
 
-function show(el){ el.classList.remove('hidden'); }
-function hide(el){ el.classList.add('hidden'); }
+function hideHard(el){
+  if(!el) return;
+  el.style.opacity = 0;
+  el.style.pointerEvents = 'none';
+  el.style.display = 'none';
+  // remove from DOM to kill z-index overlay for sure
+  setTimeout(()=>{ if(el.parentNode){ el.parentNode.removeChild(el); }}, 10);
+}
+function showHard(el){
+  if(!el) return;
+  el.style.display = 'block';
+  el.style.opacity = 1;
+  el.style.pointerEvents = 'auto';
+}
 
 function begin(){
-  // Hide gate, show player
-  hide(gate); show(player);
+  // Hide gate forcefully and show player definitively
+  hideHard(gate);
+  showHard(player);
 
   try { vid.pause(); vid.currentTime = 0; } catch(_){}
   const p = vid.play();
   if (p && typeof p.then === 'function') {
     p.then(()=> scheduleFadeAndEnd() ).catch(()=> {
-      // iOS safety: if blocked, require direct tap on video
+      // iOS fallback: require direct tap on video
       vid.addEventListener('click', ()=> { vid.play(); scheduleFadeAndEnd(); }, { once:true });
     });
   } else {
@@ -141,18 +145,18 @@ function scheduleFadeAndEnd(){
 
   endTimeout = setTimeout(()=>{
     try { vid.pause(); } catch(_){}
-    hide(player);
+    hideHard(player);
     content.classList.add('reveal');
   }, VIDEO_LEN_MS + 100);
 }
 
-// In case the file ends earlier than 25s
 vid.addEventListener('ended', ()=>{
-  hide(player);
+  hideHard(player);
   content.classList.add('reveal');
 });
 
-startBtn.addEventListener('click', begin);
+['click','touchstart'].forEach(evt => startBtn.addEventListener(evt, begin, { passive:true }));
+
 </script>
 </body>
 </html>
