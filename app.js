@@ -1,4 +1,23 @@
 
+// Inline clues (no fetch needed)
+const CLUES = {
+  "25": {
+    "title": "?",
+    "number": "25/30",
+    "difficulty": "5/6",
+    "text":
+"In the sacred alcove where prayers ascend,\nA box of reverence, where solace blends.\nGaze upwards, where angels might tread,\nOn the right-hand path, a clue is spread.\n\nBeyond eye's reach, a festive light gleams,\nAscend to the top, where the mystery teems.",
+    "code": "SugarPlumDreams (December 17th)"
+  },
+  "26": {
+    "title": "🎁",
+    "number": "26/30",
+    "difficulty": "4/6",
+    "text": "Wrapped in red and silver bright,\nI wait in silence through the night.\nWhere lists are kept and plans are made,\nLook to the board where notes are laid.",
+    "code": "CandyCaneLane"
+  }
+};
+
 let audioCtx;
 function ensureAudio(){
   if(!audioCtx){
@@ -39,19 +58,13 @@ function startExperience({revealMs=3200}={}){
   }, revealMs);
 }
 
-async function loadClue(){
+function loadClueInline(){
   const params = new URLSearchParams(location.search);
   const id = params.get('id') || '25';
-  try{
-    const res = await fetch('./clues.json', {cache:'no-store'});
-    const data = await res.json();
-    const clue = data[id] || data['25'];
-    document.getElementById('title').textContent = clue.title || 'Clue';
-    document.getElementById('meta').textContent = `Clue: ${clue.number}   •   Difficulty: ${clue.difficulty}`;
-    document.getElementById('clue').textContent = clue.text;
-    document.getElementById('code').textContent = `Code: ${clue.code}`;
-  }catch(e){
-    document.getElementById('clue').textContent = 'Unable to load clue.';
-  }
+  const clue = CLUES[id] || CLUES['25'];
+  document.getElementById('title').textContent = clue.title || 'Clue';
+  document.getElementById('meta').textContent = `Clue: ${clue.number}   •   Difficulty: ${clue.difficulty}`;
+  document.getElementById('clue').textContent = clue.text;
+  document.getElementById('code').textContent = `Code: ${clue.code}`;
 }
-document.addEventListener('DOMContentLoaded', loadClue);
+document.addEventListener('DOMContentLoaded', loadClueInline);
