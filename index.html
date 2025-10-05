@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>QR Clue — Halloween</title>
+<title>QR Clue — Halloween Hunt</title>
 <style>
   :root{
     --bg:#0b0f14;
     --card: rgba(255,255,255,.06);
     --stroke: rgba(255,255,255,.12);
     --text:#f3f6fb;
-    --accent:#ff6a00; /* pumpkin orange */
-    --accent2:#8a2be2; /* eerie purple */
+    --accent:#ff6a00;
+    --accent2:#8a2be2;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -60,11 +60,11 @@
 </style>
 </head>
 <body>
-  <!-- Gate (required for iOS to allow media with sound) -->
+  <!-- Gate -->
   <div id="gate" class="wrap">
     <div class="card" style="text-align:center">
-      <div class="title">🎃 Halloween Start</div>
-      <div class="meta">Tap the button to play a short video. It will fade out, then your clue appears.</div>
+      <div class="title">🎃 Halloween Hunt Start</div>
+      <div class="meta">Tap the button to start the <strong>October 2025 Halloween Scavenger Hunt Experience</strong>. Winner gets a <strong>$25 gift card!</strong></div>
       <button id="start" class="btn"><span class="icon">🕷️</span> Start the Spook</button>
       <div class="footer">Tip: On iPhone, sound/video plays only after a tap by design.</div>
     </div>
@@ -73,14 +73,13 @@
   <!-- Player -->
   <div id="player" class="wrap hidden">
     <div class="card">
-      <!-- IMPORTANT: Put your trimmed 25s MP4 next to this file and name it exactly "halloween.mp4" -->
       <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
       <div id="status" class="meta">Loading…</div>
       <button id="restart" class="btn alt hidden"><span class="icon">🔁</span> Replay</button>
     </div>
   </div>
 
-  <!-- Content -->
+  <!-- Clue -->
   <div id="content" class="wrap hidden">
     <div class="card">
       <div class="title">?</div>
@@ -104,7 +103,7 @@ const startBtn = document.getElementById('start');
 const restartBtn = document.getElementById('restart');
 const vid = document.getElementById('vid');
 
-const VIDEO_LEN_MS = 25000; // 25 seconds
+const VIDEO_LEN_MS = 25000;
 let fadeTimeout = null;
 let endTimeout  = null;
 
@@ -116,7 +115,6 @@ function begin(){
   hide(gate); show(player);
   status('Loading…');
 
-  // Ensure video starts from the beginning
   try { vid.pause(); vid.currentTime = 0; } catch(_){}
 
   const playPromise = vid.play();
@@ -128,14 +126,12 @@ function begin(){
       status('Tap video to play (iOS policy).');
     });
   } else {
-    // Older browsers
     scheduleFadeAndEnd();
   }
 }
 
 function scheduleFadeAndEnd(){
-  // Fade out slightly before end to feel smooth
-  const FADE_MS = 900; // match CSS transition
+  const FADE_MS = 900;
   clearTimeout(fadeTimeout); clearTimeout(endTimeout);
 
   fadeTimeout = setTimeout(()=>{
@@ -143,10 +139,8 @@ function scheduleFadeAndEnd(){
   }, Math.max(0, VIDEO_LEN_MS - FADE_MS));
 
   endTimeout = setTimeout(()=>{
-    // Stop and reveal content
     try { vid.pause(); } catch(_){}
     hide(player); show(content);
-    // reset fade for potential replay
     vid.classList.remove('fade-out');
     restartBtn.classList.remove('hidden');
   }, VIDEO_LEN_MS + 120);
@@ -155,7 +149,6 @@ function scheduleFadeAndEnd(){
 vid.addEventListener('canplaythrough', ()=> status('Ready. Tap Start.'));
 vid.addEventListener('play', ()=> status('Playing…'));
 vid.addEventListener('ended', ()=>{
-  // If the file ends before 25s, still reveal content
   hide(player); show(content);
   vid.classList.remove('fade-out');
   restartBtn.classList.remove('hidden');
