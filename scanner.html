@@ -22,7 +22,6 @@
     border-radius:999px; font-weight:700; color:#fff;}
   .status{position:absolute; left:0; right:0; bottom:0; padding:12px; text-align:center; opacity:.9;
     background:linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));}
-  /* Reticle */
   .reticle{position:absolute; inset:auto; width:min(70vmin, 80%); aspect-ratio:1/1; left:50%; top:50%;
     transform:translate(-50%,-50%); border:2px solid rgba(255,255,255,.35); border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,.15) inset}
 </style>
@@ -41,9 +40,7 @@
   </div>
 </div>
 
-<!-- jsQR (optional live software decoder if hardware path isn't delivering) -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-
 <script>
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
@@ -53,26 +50,35 @@ const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 const supportEl = document.getElementById('support');
 
-let stream, detector, scanning=false, usingJS = false;
-let lastFrameDetectTime = 0;
+// Optional allowlist; keep empty to allow any URL
+const ALLOW_PREFIX = ""; // e.g., "https://murresta13.github.io/"
+
+let stream, detector;
+let usingJS = false;
+let navigating = false;
+let lastSuccessTime = Date.now();
 
 function status(msg){ statusEl.textContent = msg; }
+function allowed(url){ return !ALLOW_PREFIX || (typeof url === 'string' && url.startsWith(ALLOW_PREFIX)); }
+async function go(url){
+  if (navigating || !allowed(url)) return;
+  navigating = true;
+  if (navigator.vibrate) navigator.vibrate(60);
+  location.href = url;
+}
 
 async function init(){
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height:{ ideal: 720 },
-        focusMode: 'continuous' // some browsers ignore but doesn't hurt
-      },
-      audio: false
+        width: { ideal: 1280 }, height:{ ideal: 720 },
+        focusMode: 'continuous'
+      }, audio: false
     });
     video.srcObject = stream;
     await video.play();
 
-    // Try to enable continuous autofocus if supported
     const track = stream.getVideoTracks()[0];
     if (track && track.getCapabilities) {
       const caps = track.getCapabilities();
@@ -82,78 +88,62 @@ async function init(){
     }
 
     if ('BarcodeDetector' in window) {
-      const formats = ['qr_code','aztec','data_matrix','pdf417'];
-      detector = new BarcodeDetector({ formats });
+      detector = new BarcodeDetector({ formats: ['qr_code','aztec','data_matrix','pdf417'] });
       supportEl.textContent = 'Scanner ready';
       status('Point at a QR…');
-      scanning = true;
-      detectLoop();
-      // If nothing detected for 3 seconds, start software fallback loop in parallel
-      setTimeout(()=>{ if (Date.now() - lastFrameDetectTime > 2500) startJSFallback(); }, 3000);
+      hardwareLoop();
+      // Kick on software fallback in parallel if no success after 2s
+      setTimeout(()=>{ if (Date.now() - lastSuccessTime > 2000) startSoftwareLoop(); }, 2000);
     } else {
-      supportEl.textContent = 'No QR API';
-      status('Starting software scanner…');
-      startJSFallback();
+      supportEl.textContent = 'Software scanner';
+      status('Point at a QR…');
+      startSoftwareLoop();
     }
-  } catch(e){
-    status('Camera permission needed. Check Settings → Safari → Camera → Allow.');
+  } catch (e) {
+    status('Camera permission needed. Settings → Safari → Camera → Allow.');
     supportEl.textContent='No camera';
   }
 }
 
-async function detectLoop(){
-  if (!scanning || !detector) return;
+async function hardwareLoop(){
+  if (!detector || navigating) return;
   try {
     const results = await detector.detect(video);
-    if (results && results.length){
+    if (results && results.length) {
+      lastSuccessTime = Date.now();
       const url = results[0].rawValue;
-      await haptic();
-      scanning = false;
-      location.href = url;
-      return;
+      return go(url);
     }
-    lastFrameDetectTime = Date.now();
-  } catch(e){ /* ignore and keep scanning */ }
-  requestAnimationFrame(detectLoop);
+  } catch(e){ /* keep trying */ }
+  requestAnimationFrame(hardwareLoop);
 }
 
-function startJSFallback(){
+function startSoftwareLoop(){
   if (usingJS) return;
   usingJS = true;
   supportEl.textContent = 'Software scanner';
-  status('Point at a QR…');
   jsLoop();
 }
 
 function jsLoop(){
-  if (!usingJS) return;
-  // Draw a downscaled frame for speed
+  if (!usingJS || navigating) return;
   const w = Math.min(640, video.videoWidth || 640);
   const h = Math.floor(w * (video.videoHeight || 480) / (video.videoWidth || 640));
   canvas.width = w; canvas.height = h;
   try {
     ctx.drawImage(video, 0, 0, w, h);
-    const img = ctx.getImageData(0,0,w,h);
+    const img = ctx.getImageData(0, 0, w, h);
     const res = window.jsQR ? jsQR(img.data, img.width, img.height, { inversionAttempts:'attemptBoth' }) : null;
     if (res && res.data){
-      usingJS = false; scanning = false;
-      haptic().then(()=> location.href = res.data );
-      return;
+      return go(res.data);
     }
-  } catch(e){ /* ignore */ }
-  setTimeout(jsLoop, 120); // ~8 fps for battery
-}
-
-async function haptic(){
-  if (navigator.vibrate) navigator.vibrate(60);
-  try {
-    if (window && 'webkit' in window && window.webkit && window.webkit.messageHandlers && window.navigator && window.navigator.vibrate) {}
   } catch(e){}
+  setTimeout(jsLoop, 120);
 }
 
 document.addEventListener('visibilitychange', ()=>{
-  if (document.hidden) { scanning=false; usingJS=false; if (video) video.pause(); }
-  else { if (video && stream) video.play(); if (detector){ scanning=true; detectLoop(); } }
+  if (document.hidden) { usingJS = false; if (video) video.pause(); }
+  else { if (video && stream) video.play(); if (detector) hardwareLoop(); if ('jsQR' in window) startSoftwareLoop(); }
 });
 
 init();
