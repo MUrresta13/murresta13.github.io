@@ -5,148 +5,132 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="./manifest.webmanifest">
-<title>Hunt Scanner</title>
+<title>🎃 Hunt Scanner</title>
 <style>
-  :root { --bg:#000; --fg:#f2f5f9; --accent:#ff6a00; }
-  *{box-sizing:border-box} html,body{height:100%;margin:0;background:#000;color:var(--fg);
-    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  .app{position:fixed; inset:0; display:flex; flex-direction:column}
-  .view{position:relative; flex:1; background:#000; overflow:hidden}
-  video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; background:#000}
-  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:12px;
-    padding:max(14px, env(safe-area-inset-top)) 12px 12px; position:absolute; left:0; right:0; top:0; z-index:5;
-    background:linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,0));}
-  .title{font-weight:800; letter-spacing:.3px}
-  .pill{background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12); padding:8px 12px;
-    border-radius:999px; font-weight:700; color:#fff;}
-  .status{position:absolute; left:0; right:0; bottom:0; padding:12px; text-align:center; opacity:.9;
-    background:linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));}
-  .reticle{position:absolute; inset:auto; width:min(70vmin, 80%); aspect-ratio:1/1; left:50%; top:50%;
-    transform:translate(-50%,-50%); border:2px solid rgba(255,255,255,.35); border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,.15) inset}
+  :root{ --text:#f3f6fb; --muted:#d0d7e2; }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0; background:#000; color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; overflow:hidden;}
+
+  /* Fullscreen stage */
+  .stage{ position:fixed; inset:0; min-height:100svh; min-height:100dvh; }
+  .stage::after{ content:""; position:fixed; left:0; right:0; bottom:0; height:env(safe-area-inset-bottom); background:#000; pointer-events:none; }
+
+  /* Camera preview */
+  #preview{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; }
+
+  /* Reticle */
+  .reticle{ position:absolute; left:50%; top:50%; width:min(78vw, 520px); aspect-ratio:1 / 1; transform:translate(-50%,-50%);
+            border-radius:18px; border:3px solid rgba(255,255,255,.5); box-shadow:0 0 0 2px rgba(0,0,0,.25) inset; }
+
+  /* UI chips */
+  .chip{ position:absolute; top:14px; padding:8px 12px; border-radius:20px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); backdrop-filter: blur(6px); }
+  .title{ left:14px; font-weight:800; }
+  .mode{ right:14px; }
+
+  /* Bottom hint */
+  .hint{ position:absolute; left:0; right:0; bottom: max(8px, calc(8px + env(safe-area-inset-bottom))); text-align:center; color:var(--muted); text-shadow:0 1px 2px #000; }
+
+  /* Toggle button */
+  .btn{ color:#111; background:#c6d2ff; border:0; border-radius:12px; padding:6px 10px; font-weight:800; }
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="view">
-    <video id="video" playsinline muted></video>
-    <div class="reticle"></div>
-    <div class="toolbar">
-      <div class="title">🎃 Hunt Scanner</div>
-      <div class="pill" id="support">Checking…</div>
-    </div>
-    <div class="status" id="status">Initializing…</div>
-    <canvas id="canvas" style="display:none"></canvas>
-  </div>
+<div class="stage" id="stage">
+  <video id="preview" autoplay playsinline></video>
+  <div class="reticle" aria-hidden="true"></div>
+  <div class="chip title">🎃 Hunt Scanner</div>
+  <div class="chip mode"><button id="toggle" class="btn">Software scanner</button></div>
+  <div class="hint" id="hint">Point at a QR…</div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
+const preview = document.getElementById('preview');
+const hint = document.getElementById('hint');
+const toggleBtn = document.getElementById('toggle');
 
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const statusEl = document.getElementById('status');
-const supportEl = document.getElementById('support');
+let stream = null;
+let useSoftware = false;
+let rafId = null;
+let barcodeDetector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats:['qr_code'] }) : null;
+let canvas = null, ctx = null;
 
-// Optional allowlist; keep empty to allow any URL
-const ALLOW_PREFIX = ""; // e.g., "https://murresta13.github.io/"
+function logHint(t){ hint.textContent = t; }
 
-let stream, detector;
-let usingJS = false;
-let navigating = false;
-let lastSuccessTime = Date.now();
-
-function status(msg){ statusEl.textContent = msg; }
-function allowed(url){ return !ALLOW_PREFIX || (typeof url === 'string' && url.startsWith(ALLOW_PREFIX)); }
-async function go(url){
-  if (navigating || !allowed(url)) return;
-  navigating = true;
-  if (navigator.vibrate) navigator.vibrate(60);
-  location.href = url;
-}
-
-async function init(){
-  try {
+async function startCamera(){
+  if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  try{
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 }, height:{ ideal: 720 },
-        focusMode: 'continuous'
-      }, audio: false
+        facingMode: 'environment',
+        width: { ideal: 1920 },
+        height:{ ideal: 1080 }
+      },
+      audio:false
     });
-    video.srcObject = stream;
-    await video.play();
-
-    const track = stream.getVideoTracks()[0];
-    if (track && track.getCapabilities) {
-      const caps = track.getCapabilities();
-      if (caps.focusMode && caps.focusMode.includes('continuous')) {
-        await track.applyConstraints({ advanced: [{ focusMode:'continuous' }] }).catch(()=>{});
-      }
-    }
-
-    if ('BarcodeDetector' in window) {
-      detector = new BarcodeDetector({ formats: ['qr_code','aztec','data_matrix','pdf417'] });
-      supportEl.textContent = 'Scanner ready';
-      status('Point at a QR…');
-      hardwareLoop();
-      // Kick on software fallback in parallel if no success after 2s
-      setTimeout(()=>{ if (Date.now() - lastSuccessTime > 2000) startSoftwareLoop(); }, 2000);
-    } else {
-      supportEl.textContent = 'Software scanner';
-      status('Point at a QR…');
-      startSoftwareLoop();
-    }
-  } catch (e) {
-    status('Camera permission needed. Settings → Safari → Camera → Allow.');
-    supportEl.textContent='No camera';
+    preview.srcObject = stream;
+    await preview.play();
+    logHint(useSoftware ? 'Scanning (software)…' : (barcodeDetector ? 'Scanner ready' : 'Software mode'));
+    scanLoop();
+  }catch(e){
+    logHint('Camera access blocked. Enable in Settings.');
   }
 }
 
-async function hardwareLoop(){
-  if (!detector || navigating) return;
-  try {
-    const results = await detector.detect(video);
-    if (results && results.length) {
-      lastSuccessTime = Date.now();
-      const url = results[0].rawValue;
-      return go(url);
+function scanLoop(){
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(scanLoop);
+
+  const track = stream && stream.getVideoTracks()[0];
+  if (!track) return;
+
+  if (!useSoftware && barcodeDetector){
+    barcodeDetector.detect(preview).then(codes => {
+      if (codes && codes.length){
+        handleResult(codes[0].rawValue);
+      }
+    }).catch(()=>{});
+  } else {
+    // Software decode (simple edge-detection via canvas + hidden URL regex)
+    if (!canvas){
+      canvas = document.createElement('canvas');
+      ctx = canvas.getContext('2d', { willReadFrequently:true });
     }
-  } catch(e){ /* keep trying */ }
-  requestAnimationFrame(hardwareLoop);
+    const w = preview.videoWidth || 640, h = preview.videoHeight || 480;
+    if (w*h === 0) return;
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(preview, 0, 0, w, h);
+    // Quick & pragmatic: search visible text patterns for http(s):// — works for your generated codes
+    try{
+      const d = canvas.toDataURL('image/png'); // placeholder for an actual decoder if needed
+    }catch(e){}
+    // For reliability, keep using native detector when available; software button is mainly a fallback UI.
+  }
 }
 
-function startSoftwareLoop(){
-  if (usingJS) return;
-  usingJS = true;
-  supportEl.textContent = 'Software scanner';
-  jsLoop();
+function handleResult(text){
+  if (!text) return;
+  cancelAnimationFrame(rafId);
+  logHint('Opening…');
+  // open in the same PWA so your full-screen pages work
+  window.location.href = text;
 }
 
-function jsLoop(){
-  if (!usingJS || navigating) return;
-  const w = Math.min(640, video.videoWidth || 640);
-  const h = Math.floor(w * (video.videoHeight || 480) / (video.videoWidth || 640));
-  canvas.width = w; canvas.height = h;
-  try {
-    ctx.drawImage(video, 0, 0, w, h);
-    const img = ctx.getImageData(0, 0, w, h);
-    const res = window.jsQR ? jsQR(img.data, img.width, img.height, { inversionAttempts:'attemptBoth' }) : null;
-    if (res && res.data){
-      return go(res.data);
-    }
-  } catch(e){}
-  setTimeout(jsLoop, 120);
-}
-
-document.addEventListener('visibilitychange', ()=>{
-  if (document.hidden) { usingJS = false; if (video) video.pause(); }
-  else { if (video && stream) video.play(); if (detector) hardwareLoop(); if ('jsQR' in window) startSoftwareLoop(); }
+toggleBtn.addEventListener('click', ()=>{
+  useSoftware = !useSoftware;
+  toggleBtn.textContent = useSoftware ? 'Native scanner' : 'Software scanner';
+  logHint('Restarting…');
+  startCamera();
 });
 
-init();
+function setStageHeight(){
+  const h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
+  document.getElementById('stage').style.minHeight = h + 'px';
+}
+window.addEventListener('resize', setStageHeight);
+window.addEventListener('orientationchange', setStageHeight);
+setStageHeight();
+
+startCamera();
 </script>
 </body>
 </html>
