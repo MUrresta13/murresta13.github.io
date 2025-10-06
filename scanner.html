@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>🎃 Hunt Scanner</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root{ --text:#f3f6fb; --muted:#d0d7e2; }
   *{box-sizing:border-box}
@@ -29,52 +31,124 @@
   <div class="hint" id="hint">Starting camera…</div>
 </div>
 
+<!-- Software decoder (loaded only if needed) -->
+<script id="jsqr-loader" type="application/json">{"loaded":false}</script>
 <script>
 const preview = document.getElementById('preview');
 const hint = document.getElementById('hint');
-
-let stream, detector, stopLoop = false;
+let stream, stopLoop=false, detector=null, usingJS=false;
 
 function setHint(t){ hint.textContent = t; }
+function vibrate(ms=35){ if (navigator.vibrate) try{ navigator.vibrate(ms); }catch(e){} }
+
+async function ensureJsQR(){
+  if (window.jsQR) return true;
+  const tag = document.createElement('script');
+  tag.src = 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js';
+  tag.async = true;
+  document.head.appendChild(tag);
+  setHint('Loading software scanner…');
+  await new Promise((res, rej)=>{
+    tag.onload = ()=>res(true);
+    tag.onerror = ()=>rej(new Error('jsQR failed to load'));
+  });
+  return !!window.jsQR;
+}
 
 async function start(){
   try{
-    detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats:['qr_code'] }) : null;
-    if (!detector){ setHint('No QR API. Use the Photo Scanner.'); return; }
-
+    // Prefer native
+    if ('BarcodeDetector' in window){
+      detector = new BarcodeDetector({ formats:['qr_code'] });
+    }
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: {ideal:1920}, height: {ideal:1080} },
-      audio: false
+      video:{ facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
+      audio:false
     });
     preview.srcObject = stream;
     await preview.play();
     setHint('Scanner ready');
 
-    const loop = async (now, meta) => {
-      if (stopLoop) return;
-      try{
-        // Create a bitmap snapshot for detection (works better in iOS PWAs)
-        const bmp = await createImageBitmap(preview);
-        const codes = await detector.detect(bmp);
-        bmp.close();
-        if (codes && codes.length){
-          stopLoop = true;
-          const url = codes[0].rawValue;
-          setHint('Opening…');
-          window.location.href = url;
-          return;
-        }
-      }catch(e){ /* ignore per-frame errors */ }
-      if ('requestVideoFrameCallback' in preview) preview.requestVideoFrameCallback(loop);
-      else requestAnimationFrame(loop);
-    };
+    // Try native once; if no results for a bit, switch to JS.
+    const nativeWorked = await tryNativeFor(800);
+    if (nativeWorked) { return; }
 
-    if ('requestVideoFrameCallback' in preview) preview.requestVideoFrameCallback(loop);
-    else requestAnimationFrame(loop);
-
+    // Fallback to jsQR
+    const ok = await ensureJsQR();
+    if (!ok){ setHint('Software scanner unavailable.'); return; }
+    usingJS = true;
+    jsLoop();
   }catch(err){
     setHint('Camera blocked. Enable in Settings → Safari → Camera.');
   }
+}
+
+function openURL(url){
+  stop();
+  vibrate(35);
+  setHint('Opening…');
+  window.location.href = url;
+}
+
+function stop(){
+  stopLoop = true;
+  try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+}
+
+function rvfcLoop(callback){
+  if ('requestVideoFrameCallback' in preview){
+    preview.requestVideoFrameCallback(callback);
+  }else{
+    requestAnimationFrame(()=>callback(performance.now(), {}));
+  }
+}
+
+async function tryNativeFor(msWindow){
+  if (!detector) return false;
+  let found = false;
+  const endAt = performance.now() + msWindow;
+
+  const loop = async (now, meta)=>{
+    if (stopLoop || now > endAt) return;
+    try{
+      const bmp = await createImageBitmap(preview);
+      const codes = await detector.detect(bmp);
+      bmp.close();
+      if (codes && codes.length){
+        found = true;
+        openURL(codes[0].rawValue);
+        return;
+      }
+    }catch(e){}
+    rvfcLoop(loop);
+  };
+  rvfcLoop(loop);
+
+  // wait for the window
+  await new Promise(r=>setTimeout(r, msWindow+50));
+  if (!found) setHint('Using software scanner…');
+  return found;
+}
+
+function jsLoop(){
+  if (stopLoop) return;
+  const w = preview.videoWidth || 640, h = preview.videoHeight || 480;
+  if (!jsLoop.canvas){
+    jsLoop.canvas = document.createElement('canvas');
+    jsLoop.ctx = jsLoop.canvas.getContext('2d', { willReadFrequently:true });
+  }
+  const canvas = jsLoop.canvas, ctx = jsLoop.ctx;
+  canvas.width = w; canvas.height = h;
+  ctx.drawImage(preview, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h);
+  try{
+    const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts:'attemptBoth' });
+    if (code && code.data){
+      openURL(code.data);
+      return;
+    }
+  }catch(e){ /* ignore decode errors */ }
+  rvfcLoop(()=>jsLoop());
 }
 
 start();
