@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>QR Clue — Halloween Hunt</title>
@@ -14,11 +14,32 @@
     --accent2:#8a2be2;
   }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 
+  /* --- Fullscreen + safe-area fix (iOS) --- */
+  html,body{
+    height:100%;
+    min-height:100dvh;             /* dynamic viewport height */
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overscroll-behavior-y:none;    /* reduce pull-to-refresh bounce */
+  }
+  @supports (height:100svh){
+    body{ min-height:100svh; }     /* small viewport unit if available */
+  }
+  body.no-scroll{
+    position:fixed; overflow:hidden; width:100%;
+  }
+
+  /* Gate card (start page) */
   #gate{
-    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-    padding:24px; background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%);
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+    padding-top:calc(24px + env(safe-area-inset-top));
+    padding-bottom:calc(24px + env(safe-area-inset-bottom));
+    background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%);
     z-index:30;
   }
   .card{
@@ -39,7 +60,8 @@
     box-shadow:0 8px 18px rgba(255,106,0,.35), inset 0 1px 0 rgba(255,255,255,.25);
   }
 
-  #player{ position:fixed; inset:0; background:#000; z-index:20; display:none; }
+  /* Fullscreen Player (video edge-to-edge) */
+  #player{ position:fixed; inset:0; background:#000; z-index:20; }
   video{
     position:absolute; inset:0; width:100%; height:100%;
     object-fit:cover; object-position:center;
@@ -48,9 +70,13 @@
   }
   .fade-out{ opacity:0; }
 
+  /* Clue content (spooky fade-in) */
   #content{
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-    padding:24px; background:#000; z-index:10;
+    padding:24px;
+    padding-top:calc(24px + env(safe-area-inset-top));
+    padding-bottom:calc(24px + env(safe-area-inset-bottom));
+    background:#000; z-index:10;
     opacity:0; filter: blur(6px); transform: translateY(6px);
     transition: opacity 1.5s ease, filter 1.5s ease, transform 1.5s ease;
   }
@@ -66,9 +92,12 @@
   .clue-meta{opacity:.85;margin-bottom:10px}
   .clue-text{white-space:pre-wrap;line-height:1.65}
   .clue-code{opacity:.9;font-style:italic;margin-top:10px}
+
+  .hidden{display:none}
 </style>
 </head>
-<body>
+<body class="no-scroll">
+  <!-- Gate -->
   <div id="gate">
     <div class="card">
       <div class="title">🎃 Halloween Hunt Start</div>
@@ -77,10 +106,13 @@
     </div>
   </div>
 
-  <div id="player">
+  <!-- Fullscreen Player (video only) -->
+  <div id="player" class="hidden">
+    <!-- IMPORTANT: Put your video next to this file as "halloween.mp4" -->
     <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
   </div>
 
+  <!-- Clue Content (fades in after video) -->
   <div id="content">
     <div class="clue-card">
       <div class="clue-title">?</div>
@@ -102,34 +134,24 @@ const content = document.getElementById('content');
 const startBtn = document.getElementById('start');
 const vid = document.getElementById('vid');
 
-const VIDEO_LEN_MS = 25000; // 25 seconds
+const VIDEO_LEN_MS = 25000; // adjust to your clip length
 let fadeTimeout = null, endTimeout = null;
 
-function hideHard(el){
-  if(!el) return;
-  el.style.opacity = 0;
-  el.style.pointerEvents = 'none';
-  el.style.display = 'none';
-  // remove from DOM to kill z-index overlay for sure
-  setTimeout(()=>{ if(el.parentNode){ el.parentNode.removeChild(el); }}, 10);
-}
-function showHard(el){
-  if(!el) return;
-  el.style.display = 'block';
-  el.style.opacity = 1;
-  el.style.pointerEvents = 'auto';
-}
+function show(el){ el.classList.remove('hidden'); }
+function hide(el){ el.classList.add('hidden'); }
 
 function begin(){
-  // Hide gate forcefully and show player definitively
-  hideHard(gate);
-  showHard(player);
+  // lock scroll during video as well
+  document.body.classList.add('no-scroll');
+
+  // Hide gate, show player
+  hide(gate); show(player);
 
   try { vid.pause(); vid.currentTime = 0; } catch(_){}
   const p = vid.play();
   if (p && typeof p.then === 'function') {
     p.then(()=> scheduleFadeAndEnd() ).catch(()=> {
-      // iOS fallback: require direct tap on video
+      // iOS fallback: if blocked, require direct tap on video
       vid.addEventListener('click', ()=> { vid.play(); scheduleFadeAndEnd(); }, { once:true });
     });
   } else {
@@ -145,18 +167,21 @@ function scheduleFadeAndEnd(){
 
   endTimeout = setTimeout(()=>{
     try { vid.pause(); } catch(_){}
-    hideHard(player);
+    hide(player);
     content.classList.add('reveal');
+    // keep no-scroll to avoid any bounce on the clue screen
+    document.body.classList.add('no-scroll');
   }, VIDEO_LEN_MS + 100);
 }
 
+// If the file ends earlier than expected
 vid.addEventListener('ended', ()=>{
-  hideHard(player);
+  hide(player);
   content.classList.add('reveal');
+  document.body.classList.add('no-scroll');
 });
 
-['click','touchstart'].forEach(evt => startBtn.addEventListener(evt, begin, { passive:true }));
-
+startBtn.addEventListener('click', begin);
 </script>
 </body>
 </html>
