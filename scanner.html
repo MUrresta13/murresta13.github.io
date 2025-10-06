@@ -9,74 +9,150 @@
 <title>Hunt Scanner</title>
 <style>
   :root { --bg:#000; --fg:#f2f5f9; --accent:#ff6a00; }
-  *{box-sizing:border-box} html,body{height:100%;margin:0;background:#000;color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  *{box-sizing:border-box} html,body{height:100%;margin:0;background:#000;color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   .app{position:fixed; inset:0; display:flex; flex-direction:column}
   .view{position:relative; flex:1; background:#000; overflow:hidden}
   video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; background:#000}
-  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:max(14px, env(safe-area-inset-top)) 12px 12px; position:absolute; left:0; right:0; top:0; z-index:5; background:linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,0));}
+  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:max(14px, env(safe-area-inset-top)) 12px 12px; position:absolute; left:0; right:0; top:0; z-index:5;
+    background:linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,0));}
   .title{font-weight:800; letter-spacing:.3px}
-  .pill{background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12); padding:8px 12px; border-radius:999px; font-weight:700; color:#fff;}
-  .status{position:absolute; left:0; right:0; bottom:0; padding:12px; text-align:center; opacity:.9; background:linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));}
+  .pill{background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12); padding:8px 12px;
+    border-radius:999px; font-weight:700; color:#fff;}
+  .status{position:absolute; left:0; right:0; bottom:0; padding:12px; text-align:center; opacity:.9;
+    background:linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));}
+  /* Reticle */
+  .reticle{position:absolute; inset:auto; width:min(70vmin, 80%); aspect-ratio:1/1; left:50%; top:50%;
+    transform:translate(-50%,-50%); border:2px solid rgba(255,255,255,.35); border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,.15) inset}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="view">
     <video id="video" playsinline muted></video>
+    <div class="reticle"></div>
     <div class="toolbar">
       <div class="title">🎃 Hunt Scanner</div>
       <div class="pill" id="support">Checking…</div>
     </div>
     <div class="status" id="status">Initializing…</div>
+    <canvas id="canvas" style="display:none"></canvas>
   </div>
 </div>
+
+<!-- jsQR (optional live software decoder if hardware path isn't delivering) -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
 <script>
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(()=>{}); }
 
 const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 const supportEl = document.getElementById('support');
 
-let stream, detector, scanning=false;
+let stream, detector, scanning=false, usingJS = false;
+let lastFrameDetectTime = 0;
 
 function status(msg){ statusEl.textContent = msg; }
 
 async function init(){
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' }}, audio:false });
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height:{ ideal: 720 },
+        focusMode: 'continuous' // some browsers ignore but doesn't hurt
+      },
+      audio: false
+    });
     video.srcObject = stream;
     await video.play();
-  } catch(e){ status('Camera permission needed. Check Settings → Safari → Camera → Allow.'); supportEl.textContent='No camera'; return; }
 
-  if ('BarcodeDetector' in window) {
-    detector = new BarcodeDetector({ formats:['qr_code'] });
-    supportEl.textContent = 'Scanner ready';
-    status('Point at a QR…');
-    scanning = true;
-    detectLoop();
-  } else {
-    supportEl.textContent = 'No QR API';
-    status('This iPhone does not expose the live QR API. (Settings → Safari → Advanced → Experimental Features → enable Shape Detection/Barcode Detector, or update iOS.)');
+    // Try to enable continuous autofocus if supported
+    const track = stream.getVideoTracks()[0];
+    if (track && track.getCapabilities) {
+      const caps = track.getCapabilities();
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        await track.applyConstraints({ advanced: [{ focusMode:'continuous' }] }).catch(()=>{});
+      }
+    }
+
+    if ('BarcodeDetector' in window) {
+      const formats = ['qr_code','aztec','data_matrix','pdf417'];
+      detector = new BarcodeDetector({ formats });
+      supportEl.textContent = 'Scanner ready';
+      status('Point at a QR…');
+      scanning = true;
+      detectLoop();
+      // If nothing detected for 3 seconds, start software fallback loop in parallel
+      setTimeout(()=>{ if (Date.now() - lastFrameDetectTime > 2500) startJSFallback(); }, 3000);
+    } else {
+      supportEl.textContent = 'No QR API';
+      status('Starting software scanner…');
+      startJSFallback();
+    }
+  } catch(e){
+    status('Camera permission needed. Check Settings → Safari → Camera → Allow.');
+    supportEl.textContent='No camera';
   }
 }
 
 async function detectLoop(){
-  if (!scanning) return;
+  if (!scanning || !detector) return;
   try {
-    const codes = await detector.detect(video);
-    if (codes && codes.length){
-      const url = codes[0].rawValue;
+    const results = await detector.detect(video);
+    if (results && results.length){
+      const url = results[0].rawValue;
+      await haptic();
       scanning = false;
       location.href = url;
       return;
     }
-  } catch(e){ /* keep trying */ }
+    lastFrameDetectTime = Date.now();
+  } catch(e){ /* ignore and keep scanning */ }
   requestAnimationFrame(detectLoop);
 }
 
+function startJSFallback(){
+  if (usingJS) return;
+  usingJS = true;
+  supportEl.textContent = 'Software scanner';
+  status('Point at a QR…');
+  jsLoop();
+}
+
+function jsLoop(){
+  if (!usingJS) return;
+  // Draw a downscaled frame for speed
+  const w = Math.min(640, video.videoWidth || 640);
+  const h = Math.floor(w * (video.videoHeight || 480) / (video.videoWidth || 640));
+  canvas.width = w; canvas.height = h;
+  try {
+    ctx.drawImage(video, 0, 0, w, h);
+    const img = ctx.getImageData(0,0,w,h);
+    const res = window.jsQR ? jsQR(img.data, img.width, img.height, { inversionAttempts:'attemptBoth' }) : null;
+    if (res && res.data){
+      usingJS = false; scanning = false;
+      haptic().then(()=> location.href = res.data );
+      return;
+    }
+  } catch(e){ /* ignore */ }
+  setTimeout(jsLoop, 120); // ~8 fps for battery
+}
+
+async function haptic(){
+  if (navigator.vibrate) navigator.vibrate(60);
+  try {
+    if (window && 'webkit' in window && window.webkit && window.webkit.messageHandlers && window.navigator && window.navigator.vibrate) {}
+  } catch(e){}
+}
+
 document.addEventListener('visibilitychange', ()=>{
-  if (document.hidden) { scanning=false; if (video) video.pause(); }
+  if (document.hidden) { scanning=false; usingJS=false; if (video) video.pause(); }
   else { if (video && stream) video.play(); if (detector){ scanning=true; detectLoop(); } }
 });
 
