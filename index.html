@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>QR Clue — Halloween Hunt</title>
 <style>
   :root{ --bg:#0b0f14; --text:#f3f6fb; --accent:#ff6a00; }
@@ -10,8 +10,16 @@
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 
-  /* Layers */
+  /* Full-screen layer base */
   .layer{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px;}
+  /* Ensure the layer truly fills the smallest visual viewport (no sliver on iOS) */
+  .layer{min-height:100svh; min-height:100dvh;}
+  /* Safe-area overlay to cover any last-pixel gap on some iPhones */
+  .layer::after{
+    content:""; position:fixed; left:0; right:0; bottom:0;
+    height:env(safe-area-inset-bottom); background:#000; pointer-events:none;
+  }
+
   #gate{background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%);}
   #player{background:#000; display:none;}
   #content{background:#000; display:none; opacity:0; filter:blur(6px); transform:translateY(6px);
@@ -29,8 +37,9 @@
     box-shadow:0 8px 18px rgba(255,106,0,.35), inset 0 1px 0 rgba(255,255,255,.25); }
 
   /* Full-bleed video */
-  video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center;
-          background:#000; transition:opacity .9s ease; }
+  .video-wrap{position:fixed; inset:0; width:100vw; height:100svh; height:100dvh;}
+  video{ position:absolute; left:0; top:0; width:100%; height:100%;
+         object-fit:cover; object-position:center; background:#000; transition:opacity .9s ease; }
   .fade-out{ opacity:0; }
 
   /* Clue card */
@@ -53,8 +62,9 @@
 
 <!-- Video -->
 <div id="player" class="layer">
-  <!-- Keep this file next to index.html -->
-  <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
+  <div class="video-wrap">
+    <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
+  </div>
 </div>
 
 <!-- Clue -->
@@ -66,8 +76,7 @@
 Rules:
 - No bedrooms.
 - Nothing in the office.
-- Everywhere else fair game.
-</div>
+- Everywhere else fair game.</div>
   </div>
 </div>
 
@@ -78,8 +87,7 @@ const content = document.getElementById('content');
 const startBtn = document.getElementById('start');
 const vid = document.getElementById('vid');
 
-// Set to your real clip length in ms
-const VIDEO_LEN_MS = 25000;
+const VIDEO_LEN_MS = 25000; // adjust to real clip length
 let fadeTimeout, endTimeout;
 
 function show(el){ el.style.display='flex'; }
@@ -105,16 +113,28 @@ function begin(){
   show(player);
   try{ vid.currentTime = 0; }catch(e){}
   vid.classList.remove('fade-out');
+
   const p = vid.play();
   if (p && typeof p.then === 'function'){
-    p.then(()=> scheduleFinish()).catch(()=>{
-      // iOS fallback: require a single tap directly on the video
-      vid.addEventListener('click', ()=> vid.play().then(()=> scheduleFinish()), { once:true });
-    });
+    p.then(()=> scheduleFinish())
+     .catch(()=>{
+       vid.addEventListener('click', ()=> vid.play().then(()=> scheduleFinish()), { once:true });
+     });
   } else {
     scheduleFinish();
   }
 }
+
+// Maintain exact height if iOS changes viewport during play
+function setVH(){
+  const wrap = document.querySelector('.video-wrap');
+  if (!wrap) return;
+  const h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
+  wrap.style.height = h + 'px';
+}
+window.addEventListener('resize', setVH);
+window.addEventListener('orientationchange', setVH);
+setVH();
 
 startBtn.addEventListener('click', begin);
 vid.addEventListener('ended', revealClue);
