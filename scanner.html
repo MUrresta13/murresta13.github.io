@@ -10,17 +10,13 @@
 <style>
   :root { --bg:#000; --fg:#f2f5f9; --accent:#ff6a00; }
   *{box-sizing:border-box} html,body{height:100%;margin:0;background:#000;color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  body{display:flex;align-items:center;justify-content:center}
   .app{position:fixed; inset:0; display:flex; flex-direction:column}
   .view{position:relative; flex:1; background:#000; overflow:hidden}
   video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; background:#000}
   .toolbar{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:max(14px, env(safe-area-inset-top)) 12px 12px; position:absolute; left:0; right:0; top:0; z-index:5; background:linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,0));}
   .title{font-weight:800; letter-spacing:.3px}
   .pill{background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12); padding:8px 12px; border-radius:999px; font-weight:700; color:#fff;}
-  .footer{position:absolute; left:0; right:0; bottom:0; z-index:5; padding: 12px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); display:flex; align-items:center; justify-content:space-between; gap:10px; background:linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));}
-  .btn{-webkit-tap-highlight-color:transparent; border:0; border-radius:12px; padding:12px 14px; font-weight:800; background:linear-gradient(135deg, var(--accent), #ff9f1a); color:#111; box-shadow:0 8px 18px rgba(255,106,0,.35);}
-  .link{border:1px solid rgba(255,255,255,.25); color:#fff; background:transparent}
-  .status{opacity:.9}
+  .status{position:absolute; left:0; right:0; bottom:0; padding:12px; text-align:center; opacity:.9; background:linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));}
 </style>
 </head>
 <body>
@@ -29,12 +25,9 @@
     <video id="video" playsinline muted></video>
     <div class="toolbar">
       <div class="title">🎃 Hunt Scanner</div>
-      <div class="pill" id="support">Checking camera…</div>
+      <div class="pill" id="support">Checking…</div>
     </div>
-    <div class="footer">
-      <div class="status" id="status">Initializing…</div>
-      <button class="btn link" id="fallbackBtn" style="display:none;">Use Photo Scanner</button>
-    </div>
+    <div class="status" id="status">Initializing…</div>
   </div>
 </div>
 
@@ -44,7 +37,6 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').
 const video = document.getElementById('video');
 const statusEl = document.getElementById('status');
 const supportEl = document.getElementById('support');
-const fallbackBtn = document.getElementById('fallbackBtn');
 
 let stream, detector, scanning=false;
 
@@ -55,7 +47,8 @@ async function init(){
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' }}, audio:false });
     video.srcObject = stream;
     await video.play();
-  } catch(e){}
+  } catch(e){ status('Camera permission needed. Check Settings → Safari → Camera → Allow.'); supportEl.textContent='No camera'; return; }
+
   if ('BarcodeDetector' in window) {
     detector = new BarcodeDetector({ formats:['qr_code'] });
     supportEl.textContent = 'Scanner ready';
@@ -64,9 +57,7 @@ async function init(){
     detectLoop();
   } else {
     supportEl.textContent = 'No QR API';
-    status('This device lacks the live QR API.');
-    fallbackBtn.style.display = 'inline-block';
-    fallbackBtn.addEventListener('click', ()=> location.href = './scanner-fallback.html');
+    status('This iPhone does not expose the live QR API. (Settings → Safari → Advanced → Experimental Features → enable Shape Detection/Barcode Detector, or update iOS.)');
   }
 }
 
@@ -80,13 +71,15 @@ async function detectLoop(){
       location.href = url;
       return;
     }
-  } catch(e){}
+  } catch(e){ /* keep trying */ }
   requestAnimationFrame(detectLoop);
 }
+
 document.addEventListener('visibilitychange', ()=>{
-  if (document.hidden) { scanning=false; video.pause(); }
+  if (document.hidden) { scanning=false; if (video) video.pause(); }
   else { if (video && stream) video.play(); if (detector){ scanning=true; detectLoop(); } }
 });
+
 init();
 </script>
 </body>
