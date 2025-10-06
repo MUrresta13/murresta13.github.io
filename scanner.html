@@ -1,123 +1,83 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>🎃 Hunt Scanner</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: black;
-    height: 100%;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: white;
-  }
-  .scanner-container {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100svh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-  }
-  video {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .reticle {
-    position: absolute;
-    border: 3px solid rgba(255,255,255,0.6);
-    border-radius: 12px;
-    width: min(70vw, 400px);
-    aspect-ratio: 1;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-  }
-  .status {
-    position: absolute;
-    top: env(safe-area-inset-top);
-    width: 100%;
-    text-align: center;
-    font-size: 1.1em;
-    font-weight: 600;
-    color: #ffae00;
-    padding-top: 12px;
-    text-shadow: 0 1px 2px black;
-  }
-  .hint {
-    position: absolute;
-    bottom: calc(env(safe-area-inset-bottom) + 12px);
-    width: 100%;
-    text-align: center;
-    font-size: 1em;
-    color: rgba(255,255,255,0.85);
-    text-shadow: 0 1px 2px black;
-  }
+  :root{ --text:#f3f6fb; --muted:#d0d7e2; }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0; background:#000; color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; overflow:hidden;}
+
+  .stage{ position:fixed; inset:0; min-height:100svh; min-height:100dvh; }
+  .stage::after{ content:""; position:fixed; left:0; right:0; bottom:0; height:env(safe-area-inset-bottom); background:#000; pointer-events:none; }
+
+  #preview{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; }
+
+  .reticle{ position:absolute; left:50%; top:50%; width:min(78vw, 520px); aspect-ratio:1/1; transform:translate(-50%,-50%);
+            border-radius:18px; border:3px solid rgba(255,255,255,.5); box-shadow:0 0 0 2px rgba(0,0,0,.25) inset; }
+  .chip{ position:absolute; left:14px; top:14px; padding:8px 12px; border-radius:20px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); backdrop-filter: blur(6px); font-weight:800; }
+  .hint{ position:absolute; left:0; right:0; bottom: max(8px, calc(8px + env(safe-area-inset-bottom))); text-align:center; color:var(--muted); text-shadow:0 1px 2px #000; }
 </style>
 </head>
 <body>
-<div class="scanner-container">
-  <video id="video" autoplay playsinline></video>
-  <div class="reticle"></div>
-  <div class="status" id="status">🎃 Hunt Scanner</div>
-  <div class="hint" id="hint">Initializing camera…</div>
+<div class="stage">
+  <video id="preview" autoplay playsinline muted></video>
+  <div class="reticle" aria-hidden="true"></div>
+  <div class="chip">🎃 Hunt Scanner</div>
+  <div class="hint" id="hint">Starting camera…</div>
 </div>
-<script>
-const video = document.getElementById('video');
-const statusText = document.getElementById('status');
-const hint = document.getElementById('hint');
-let detector;
-let stream;
-let scanning = true;
 
-async function initCamera() {
-  try {
+<script>
+const preview = document.getElementById('preview');
+const hint = document.getElementById('hint');
+
+let stream, detector, stopLoop = false;
+
+function setHint(t){ hint.textContent = t; }
+
+async function start(){
+  try{
+    detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats:['qr_code'] }) : null;
+    if (!detector){ setHint('No QR API. Use the Photo Scanner.'); return; }
+
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      video: { facingMode: 'environment', width: {ideal:1920}, height: {ideal:1080} },
       audio: false
     });
-    video.srcObject = stream;
-    await video.play();
-    hint.textContent = "Scanner ready";
-    startDetection();
-  } catch (e) {
-    hint.textContent = "Camera access denied.";
+    preview.srcObject = stream;
+    await preview.play();
+    setHint('Scanner ready');
+
+    const loop = async (now, meta) => {
+      if (stopLoop) return;
+      try{
+        // Create a bitmap snapshot for detection (works better in iOS PWAs)
+        const bmp = await createImageBitmap(preview);
+        const codes = await detector.detect(bmp);
+        bmp.close();
+        if (codes && codes.length){
+          stopLoop = true;
+          const url = codes[0].rawValue;
+          setHint('Opening…');
+          window.location.href = url;
+          return;
+        }
+      }catch(e){ /* ignore per-frame errors */ }
+      if ('requestVideoFrameCallback' in preview) preview.requestVideoFrameCallback(loop);
+      else requestAnimationFrame(loop);
+    };
+
+    if ('requestVideoFrameCallback' in preview) preview.requestVideoFrameCallback(loop);
+    else requestAnimationFrame(loop);
+
+  }catch(err){
+    setHint('Camera blocked. Enable in Settings → Safari → Camera.');
   }
 }
 
-async function startDetection() {
-  if (!('BarcodeDetector' in window)) {
-    hint.textContent = "QR detection not supported on this device.";
-    return;
-  }
-  detector = new BarcodeDetector({ formats: ['qr_code'] });
-  video.requestVideoFrameCallback(scanFrame);
-}
-
-async function scanFrame() {
-  if (!scanning) return;
-  try {
-    const codes = await detector.detect(video);
-    if (codes.length > 0) {
-      scanning = false;
-      hint.textContent = "QR detected! Opening…";
-      window.location.href = codes[0].rawValue;
-      return;
-    }
-  } catch (err) {}
-  video.requestVideoFrameCallback(scanFrame);
-}
-
-initCamera();
+start();
 </script>
 </body>
 </html>
