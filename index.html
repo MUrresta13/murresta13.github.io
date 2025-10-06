@@ -2,141 +2,132 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Diagnose — Halloween Hunt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>QR Clue — Halloween Hunt</title>
 <style>
-  :root{{ --bg:#000; --text:#f3f6fb; --accent:#ff6a00; }}
-  *{{box-sizing:border-box}}
-  html,body{{height:100%;margin:0;background:#000;color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}}
+  :root{ --bg:#0b0f14; --panel:#0d121b; --text:#f3f6fb; --muted:#cbd5e1; --accent:#ff6a00; }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 
-  #gate,#player,#content{{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; background:#000}}
-  #gate{{ background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%); }}
-  .card{{ width:min(820px,92vw); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:20px; box-shadow:0 12px 28px rgba(0,0,0,.45); text-align:center; }}
-  .title{{font-size:1.35rem;font-weight:900;margin-bottom:8px}}
-  .meta{{opacity:.9;margin:.25rem 0 1rem}}
-  .btn{{ -webkit-tap-highlight-color:transparent; display:inline-flex; align-items:center; gap:10px; padding:14px 18px; border:0; border-radius:14px; font-weight:800; font-size:1.05rem; color:#1a1a1a; background:linear-gradient(135deg, var(--accent), #ff9f1a); box-shadow:0 8px 18px rgba(255,106,0,.35), inset 0 1px 0 rgba(255,255,255,.25);}}
+  /* Layers */
+  .layer{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px;}
+  #gate{background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%);}
+  #player{background:#000; display:none;}
+  #content{background:#000; display:none; opacity:0; filter:blur(6px); transform:translateY(6px); transition:opacity 1.2s ease, filter 1.2s ease, transform 1.2s ease;}
+  #content.reveal{opacity:1; filter:blur(0); transform:translateY(0);}
 
-  #player{{ background:#000; }}
-  video{{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; transition:opacity .9s ease; }}
-  .fade-out{{ opacity:0; }}
+  /* Start card */
+  .card{ width:min(820px,92vw); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+    border-radius:16px; padding:20px; text-align:center; box-shadow:0 12px 28px rgba(0,0,0,.45); }
+  .title{font-size:1.35rem; font-weight:900; margin-bottom:8px}
+  .meta{opacity:.92; margin:.25rem 0 1rem}
+  .btn{
+    -webkit-tap-highlight-color:transparent; display:inline-flex; align-items:center; gap:10px;
+    padding:14px 18px; border:0; border-radius:14px; font-weight:800; font-size:1.05rem;
+    color:#1a1a1a; background:linear-gradient(135deg, var(--accent), #ff9f1a);
+    box-shadow:0 8px 18px rgba(255,106,0,.35), inset 0 1px 0 rgba(255,255,255,.25);
+  }
 
-  #content{{ opacity:0; filter: blur(6px); transform: translateY(6px); transition: opacity 1.5s ease, filter 1.5s ease, transform 1.5s ease; }}
-  #content.reveal{{ opacity:1; filter: blur(0px); transform: translateY(0); }}
-  .clue-card{{ width:min(820px,92vw); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:20px; box-shadow:0 12px 28px rgba(0,0,0,.45); }}
+  /* Full bleed video */
+  video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; background:#000; transition:opacity .9s ease; }
+  .fade-out{ opacity:0; }
 
-  .hidden{{display:none}}
-
-  /* On-screen diagnostic console */
-  #diag{{ position:fixed; left:0; right:0; top:0; z-index:9999; font:12px/1.4 ui-monospace, Menlo, monospace; background:rgba(0,0,0,.7); color:#0f0; padding:8px 10px; white-space:pre-wrap; max-height:40vh; overflow:auto; }}
-  #diag button{{ margin-left:8px; padding:6px 8px; border-radius:8px; border:1px solid #333; background:#111; color:#0f0; font-weight:700; }}
+  /* Clue */
+  .clue-card{ width:min(820px,92vw); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+    border-radius:16px; padding:20px; box-shadow:0 12px 28px rgba(0,0,0,.45); }
+  .clue-title{ font-weight:900; margin-bottom:6px }
+  .clue-meta{ opacity:.85; margin-bottom:10px }
+  .clue-text{ white-space:pre-wrap; line-height:1.65 }
+  .clue-code{ opacity:.9; font-style:italic; margin-top:10px }
 </style>
 </head>
 <body>
 
-<div id="diag">diag ready<button id="toggleControls">Show Controls</button><button id="reloadVideo">Reload Video</button></div>
-
-<div id="gate">
+<!-- Start -->
+<div id="gate" class="layer">
   <div class="card">
-    <div class="title">🎃 Halloween Hunt Start (Diagnose)</div>
-    <div class="meta">This build logs video events to help isolate the black-screen issue.</div>
+    <div class="title">🎃 Halloween Hunt Start</div>
+    <div class="meta">Tap the button to start the <strong>October 2025 Halloween Scavenger Hunt Experience</strong>. Winner gets a <strong>$25 gift card!</strong></div>
     <button id="start" class="btn"><span>🕷️</span> Start the Spook</button>
   </div>
 </div>
 
-<div id="player" class="hidden">
-  <video id="vid" playsinline preload="auto"></video>
+<!-- Video -->
+<div id="player" class="layer">
+  <!-- IMPORTANT: place halloween.mp4 next to this file -->
+  <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
 </div>
 
-<div id="content" class="hidden">
+<!-- Clue -->
+<div id="content" class="layer">
   <div class="clue-card">
-    <div>Clue placeholder. If you can read this, reveal worked.</div>
+    <div class="clue-title">?</div>
+    <div class="clue-meta">Clue: 25/30 • Difficulty: 5/6</div>
+    <div class="clue-text">In the sacred alcove where prayers ascend,
+A box of reverence, where solace blends. Gaze upwards,
+where angels might tread, on the right-hand path, a clue is spread.
+
+Beyond eye's reach, a festive light gleams,
+Ascend to the top, where the mystery teems.</div>
+    <div class="clue-code">Code: SugarPlumDreams (December 17th)</div>
   </div>
 </div>
 
 <script>
-const diag = document.getElementById('diag');
-function log(msg){{ diag.textContent += '\n' + msg; diag.scrollTop = diag.scrollHeight; }}
-function show(el){{ el.classList.remove('hidden'); }}
-function hide(el){{ el.classList.add('hidden'); }}
-
 const gate = document.getElementById('gate');
 const player = document.getElementById('player');
 const content = document.getElementById('content');
 const startBtn = document.getElementById('start');
 const vid = document.getElementById('vid');
-const toggleControls = document.getElementById('toggleControls');
-const reloadVideoBtn = document.getElementById('reloadVideo');
 
+// Duration of your clip (ms). Change if your video isn't ~25s.
 const VIDEO_LEN_MS = 25000;
 let fadeTimeout, endTimeout;
 
-function wireVideo(){{
-  ['loadstart','loadedmetadata','loadeddata','canplay','canplaythrough','play','playing','timeupdate','pause','ended','stalled','waiting','suspend','emptied','error'].forEach(evt=>{{
-    vid.addEventListener(evt, ()=>{{
-      const nsMap = ['EMPTY','IDLE','LOADING','NO_SOURCE'];
-      const rsMap = ['HAVE_NOTHING','HAVE_METADATA','HAVE_CURRENT_DATA','HAVE_FUTURE_DATA','HAVE_ENOUGH_DATA'];
-      const ns = nsMap[vid.networkState] || vid.networkState;
-      const rs = rsMap[vid.readyState] || vid.readyState;
-      log(`[event] ${{evt}}: t=${{vid.currentTime.toFixed(2)}}s ns=${{ns}} rs=${{rs}}`);
-      if (evt==='error' && vid.error) log(`[error] code=${{vid.error.code}}`);
-    }});
-  }});
-}}
-wireVideo();
+function show(el){ el.style.display='flex'; }
+function hide(el){ el.style.display='none'; }
+function clearTimers(){ clearTimeout(fadeTimeout); clearTimeout(endTimeout); }
 
-function freshenSrc(){{
-  const url = './halloween.mp4?v={ts}';
-  vid.removeAttribute('src'); vid.load();
-  vid.src = url;
-  log('set src → ' + url);
-}}
-freshenSrc();
-
-toggleControls.addEventListener('click', ()=>{{
-  if (!vid.hasAttribute('controls')){{ vid.setAttribute('controls',''); toggleControls.textContent='Hide Controls'; }}
-  else {{ vid.removeAttribute('controls'); toggleControls.textContent='Show Controls'; }}
-}});
-
-reloadVideoBtn.addEventListener('click', freshenSrc);
-
-function clearTimers(){{ clearTimeout(fadeTimeout); clearTimeout(endTimeout); }}
-
-function reveal(){{
-  try{{ vid.pause(); }}catch(e){{}}
-  hide(player); show(content);
+function revealClue(){
+  try{ vid.pause(); }catch(e){}
+  hide(player);
+  show(content);
+  // trigger fade-in
   requestAnimationFrame(()=> content.classList.add('reveal'));
-  log('reveal()');
-}}
+}
 
-function schedule(){{
+function scheduleFinish(){
   const FADE_MS = 900;
   clearTimers();
+  // Begin fade just before the end
   fadeTimeout = setTimeout(()=> vid.classList.add('fade-out'), Math.max(0, VIDEO_LEN_MS - FADE_MS));
-  endTimeout = setTimeout(reveal, VIDEO_LEN_MS + 120);
-  log('schedule() set');
-}}
+  endTimeout = setTimeout(revealClue, VIDEO_LEN_MS + 120);
+}
 
-function begin(){{
-  hide(gate); show(player);
-  try {{ vid.currentTime = 0; }} catch(e){{}}
+function begin(){
+  hide(gate);
+  show(player);
+
+  try{ vid.currentTime = 0; }catch(e){}
   vid.classList.remove('fade-out');
 
   const p = vid.play();
-  if (p && p.then){{
-    p.then(()=>{{ log('play() → resolved'); schedule(); }})
-     .catch(()=>{{ log('play() → rejected — tapping video required'); vid.addEventListener('click', ()=> vid.play().then(()=>{{ log('video tap → play resolved'); schedule(); }}), {{ once:true }}); }});
-  }} else {{
-    log('play() not promise-like; scheduling');
-    schedule();
-  }}
-}}
+  if (p && typeof p.then === 'function'){
+    p.then(()=> scheduleFinish())
+     .catch(()=>{
+       // iOS manual confirmation tap if needed
+       vid.addEventListener('click', ()=>{
+         vid.play().then(()=> scheduleFinish());
+       }, { once:true });
+     });
+  } else {
+    scheduleFinish();
+  }
+}
 
-vid.addEventListener('ended', reveal);
 startBtn.addEventListener('click', begin);
+vid.addEventListener('ended', revealClue);
 </script>
-
 </body>
 </html>
