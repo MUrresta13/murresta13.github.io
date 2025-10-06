@@ -31,8 +31,6 @@
   <div class="hint" id="hint">Starting camera…</div>
 </div>
 
-<!-- Software decoder (loaded only if needed) -->
-<script id="jsqr-loader" type="application/json">{"loaded":false}</script>
 <script>
 const preview = document.getElementById('preview');
 const hint = document.getElementById('hint');
@@ -41,6 +39,18 @@ let stream, stopLoop=false, detector=null, usingJS=false;
 function setHint(t){ hint.textContent = t; }
 function vibrate(ms=35){ if (navigator.vibrate) try{ navigator.vibrate(ms); }catch(e){} }
 
+function absoluteURL(raw){ try{ return new URL(raw, location.href); } catch(e){ return null; } }
+function openURL(raw){
+  stop();
+  vibrate(35);
+  const u = absoluteURL(raw);
+  if (u && u.hostname === location.hostname && u.pathname.endsWith('.mp4')){
+    location.href = location.origin + '/index.html';
+    return;
+  }
+  location.href = raw;
+}
+
 async function ensureJsQR(){
   if (window.jsQR) return true;
   const tag = document.createElement('script');
@@ -48,19 +58,13 @@ async function ensureJsQR(){
   tag.async = true;
   document.head.appendChild(tag);
   setHint('Loading software scanner…');
-  await new Promise((res, rej)=>{
-    tag.onload = ()=>res(true);
-    tag.onerror = ()=>rej(new Error('jsQR failed to load'));
-  });
+  await new Promise((res, rej)=>{ tag.onload=()=>res(true); tag.onerror=()=>rej(); });
   return !!window.jsQR;
 }
 
 async function start(){
   try{
-    // Prefer native
-    if ('BarcodeDetector' in window){
-      detector = new BarcodeDetector({ formats:['qr_code'] });
-    }
+    if ('BarcodeDetector' in window){ detector = new BarcodeDetector({ formats:['qr_code'] }); }
     stream = await navigator.mediaDevices.getUserMedia({
       video:{ facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} },
       audio:false
@@ -69,11 +73,9 @@ async function start(){
     await preview.play();
     setHint('Scanner ready');
 
-    // Try native once; if no results for a bit, switch to JS.
-    const nativeWorked = await tryNativeFor(800);
-    if (nativeWorked) { return; }
+    const nativeWorked = await tryNativeFor(900);
+    if (nativeWorked) return;
 
-    // Fallback to jsQR
     const ok = await ensureJsQR();
     if (!ok){ setHint('Software scanner unavailable.'); return; }
     usingJS = true;
@@ -83,31 +85,20 @@ async function start(){
   }
 }
 
-function openURL(url){
-  stop();
-  vibrate(35);
-  setHint('Opening…');
-  window.location.href = url;
-}
-
 function stop(){
   stopLoop = true;
   try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
 }
 
-function rvfcLoop(callback){
-  if ('requestVideoFrameCallback' in preview){
-    preview.requestVideoFrameCallback(callback);
-  }else{
-    requestAnimationFrame(()=>callback(performance.now(), {}));
-  }
+function rvfc(cb){
+  if ('requestVideoFrameCallback' in preview){ preview.requestVideoFrameCallback(cb); }
+  else { requestAnimationFrame(()=>cb(performance.now(), {})); }
 }
 
-async function tryNativeFor(msWindow){
+async function tryNativeFor(msWin){
   if (!detector) return false;
   let found = false;
-  const endAt = performance.now() + msWindow;
-
+  const endAt = performance.now() + msWin;
   const loop = async (now, meta)=>{
     if (stopLoop || now > endAt) return;
     try{
@@ -120,12 +111,10 @@ async function tryNativeFor(msWindow){
         return;
       }
     }catch(e){}
-    rvfcLoop(loop);
+    rvfc(loop);
   };
-  rvfcLoop(loop);
-
-  // wait for the window
-  await new Promise(r=>setTimeout(r, msWindow+50));
+  rvfc(loop);
+  await new Promise(r=>setTimeout(r, msWin+80));
   if (!found) setHint('Using software scanner…');
   return found;
 }
@@ -147,8 +136,8 @@ function jsLoop(){
       openURL(code.data);
       return;
     }
-  }catch(e){ /* ignore decode errors */ }
-  rvfcLoop(()=>jsLoop());
+  }catch(e){}
+  rvfc(()=>jsLoop());
 }
 
 start();

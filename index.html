@@ -10,15 +10,9 @@
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 
-  /* Full-screen layer base */
-  .layer{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px;}
-  /* Ensure the layer truly fills the smallest visual viewport (no sliver on iOS) */
-  .layer{min-height:100svh; min-height:100dvh;}
-  /* Safe-area overlay to cover any last-pixel gap on some iPhones */
-  .layer::after{
-    content:""; position:fixed; left:0; right:0; bottom:0;
-    height:env(safe-area-inset-bottom); background:#000; pointer-events:none;
-  }
+  /* Fullscreen layers */
+  .layer{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; min-height:100svh; min-height:100dvh;}
+  .layer::after{ content:""; position:fixed; left:0; right:0; bottom:0; height:env(safe-area-inset-bottom); background:#000; pointer-events:none; }
 
   #gate{background: radial-gradient(1200px 700px at 50% -10%, #111627 0%, #0b0f14 60%);}
   #player{background:#000; display:none;}
@@ -63,6 +57,7 @@
 <!-- Video -->
 <div id="player" class="layer">
   <div class="video-wrap">
+    <!-- Keep halloween.mp4 next to this file -->
     <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
   </div>
 </div>
@@ -87,7 +82,7 @@ const content = document.getElementById('content');
 const startBtn = document.getElementById('start');
 const vid = document.getElementById('vid');
 
-const VIDEO_LEN_MS = 25000; // adjust to real clip length
+const VIDEO_LEN_MS = 25000; // adjust to your clip length in ms
 let fadeTimeout, endTimeout;
 
 function show(el){ el.style.display='flex'; }
@@ -118,6 +113,7 @@ function begin(){
   if (p && typeof p.then === 'function'){
     p.then(()=> scheduleFinish())
      .catch(()=>{
+       // iOS requires a user gesture: if blocked, a tap on video starts it
        vid.addEventListener('click', ()=> vid.play().then(()=> scheduleFinish()), { once:true });
      });
   } else {
@@ -125,12 +121,10 @@ function begin(){
   }
 }
 
-// Maintain exact height if iOS changes viewport during play
+// Keep wrapper perfectly tall if iOS viewport changes
 function setVH(){
-  const wrap = document.querySelector('.video-wrap');
-  if (!wrap) return;
   const h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
-  wrap.style.height = h + 'px';
+  document.querySelector('.video-wrap').style.height = h + 'px';
 }
 window.addEventListener('resize', setVH);
 window.addEventListener('orientationchange', setVH);
