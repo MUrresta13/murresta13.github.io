@@ -11,30 +11,30 @@
     --bg:#000000;
     --text:#f3f6fb;
     --accent:#ff6a00;
-    --accent2:#8a2be2;
   }
   *{box-sizing:border-box}
 
-  /* --- Fullscreen + safe-area fix (iOS) --- */
+  /* Global fullscreen+safe-area handling */
   html,body{
     height:100%;
-    min-height:100dvh;             /* dynamic viewport height */
     margin:0;
-    background:var(--bg);
     color:var(--text);
+    background:var(--bg);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    overscroll-behavior-y:none;    /* reduce pull-to-refresh bounce */
+    overscroll-behavior-y:none;
   }
-  @supports (height:100svh){
-    body{ min-height:100svh; }     /* small viewport unit if available */
+  /* Prefer dynamic viewport units */
+  .fill, #gate, #player, #content {
+    min-height: 100dvh;
+    min-height: 100svh;
+    min-height: 100lvh;
+    min-height: -webkit-fill-available;
   }
-  body.no-scroll{
-    position:fixed; overflow:hidden; width:100%;
-  }
+  body.no-scroll{ position:fixed; overflow:hidden; width:100%; }
 
-  /* Gate card (start page) */
+  /* Start gate */
   #gate{
-    position:fixed; inset:0;
+    position:fixed; left:0; right:0; top:0; bottom:0;
     display:flex; align-items:center; justify-content:center;
     padding:24px;
     padding-top:calc(24px + env(safe-area-inset-top));
@@ -46,8 +46,7 @@
     width:min(820px, 92vw);
     background:rgba(255,255,255,.06);
     border:1px solid rgba(255,255,255,.12);
-    border-radius:16px;
-    padding:20px;
+    border-radius:16px; padding:20px;
     box-shadow:0 12px 28px rgba(0,0,0,.45);
     text-align:center;
   }
@@ -60,19 +59,21 @@
     box-shadow:0 8px 18px rgba(255,106,0,.35), inset 0 1px 0 rgba(255,255,255,.25);
   }
 
-  /* Fullscreen Player (video edge-to-edge) */
-  #player{ position:fixed; inset:0; background:#000; z-index:20; }
+  /* Video layer */
+  #player{ position:fixed; left:0; right:0; top:0; bottom:0; background:#000; z-index:20; }
   video{
-    position:absolute; inset:0; width:100%; height:100%;
+    position:absolute; left:0; right:0; top:0; bottom:0;
+    width:100%; height:100%;
     object-fit:cover; object-position:center;
     background:#000;
     transition:opacity .9s ease;
   }
   .fade-out{ opacity:0; }
 
-  /* Clue content (spooky fade-in) */
+  /* Clue layer */
   #content{
-    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    position:fixed; left:0; right:0; top:0; bottom:0;
+    display:flex; align-items:center; justify-content:center;
     padding:24px;
     padding-top:calc(24px + env(safe-area-inset-top));
     padding-bottom:calc(24px + env(safe-area-inset-bottom));
@@ -96,7 +97,7 @@
   .hidden{display:none}
 </style>
 </head>
-<body class="no-scroll">
+<body>
   <!-- Gate -->
   <div id="gate">
     <div class="card">
@@ -108,11 +109,10 @@
 
   <!-- Fullscreen Player (video only) -->
   <div id="player" class="hidden">
-    <!-- IMPORTANT: Put your video next to this file as "halloween.mp4" -->
     <video id="vid" src="./halloween.mp4" playsinline preload="auto"></video>
   </div>
 
-  <!-- Clue Content (fades in after video) -->
+  <!-- Clue Content -->
   <div id="content">
     <div class="clue-card">
       <div class="clue-title">?</div>
@@ -134,27 +134,34 @@ const content = document.getElementById('content');
 const startBtn = document.getElementById('start');
 const vid = document.getElementById('vid');
 
-const VIDEO_LEN_MS = 25000; // adjust to your clip length
+const VIDEO_LEN_MS = 25000; // adjust to your clip
 let fadeTimeout = null, endTimeout = null;
 
 function show(el){ el.classList.remove('hidden'); }
 function hide(el){ el.classList.add('hidden'); }
 
 function begin(){
-  // lock scroll during video as well
-  document.body.classList.add('no-scroll');
-
-  // Hide gate, show player
+  // Hide gate, show player first, THEN try to play (ensures iOS gesture chain)
   hide(gate); show(player);
 
   try { vid.pause(); vid.currentTime = 0; } catch(_){}
-  const p = vid.play();
-  if (p && typeof p.then === 'function') {
-    p.then(()=> scheduleFadeAndEnd() ).catch(()=> {
-      // iOS fallback: if blocked, require direct tap on video
-      vid.addEventListener('click', ()=> { vid.play(); scheduleFadeAndEnd(); }, { once:true });
+  const playPromise = vid.play();
+  if (playPromise && typeof playPromise.then === 'function') {
+    playPromise.then(()=> {
+      // only after playback is confirmed, lock scroll
+      document.body.classList.add('no-scroll');
+      scheduleFadeAndEnd();
+    }).catch(()=> {
+      // Tap video once more if iOS blocks autoplay after gesture for any reason
+      vid.addEventListener('click', ()=> {
+        vid.play().then(()=>{
+          document.body.classList.add('no-scroll');
+          scheduleFadeAndEnd();
+        });
+      }, { once:true });
     });
   } else {
+    document.body.classList.add('no-scroll');
     scheduleFadeAndEnd();
   }
 }
@@ -162,19 +169,16 @@ function begin(){
 function scheduleFadeAndEnd(){
   const FADE_MS = 900;
   clearTimeout(fadeTimeout); clearTimeout(endTimeout);
-
   fadeTimeout = setTimeout(()=> vid.classList.add('fade-out'), Math.max(0, VIDEO_LEN_MS - FADE_MS));
-
   endTimeout = setTimeout(()=>{
     try { vid.pause(); } catch(_){}
     hide(player);
     content.classList.add('reveal');
-    // keep no-scroll to avoid any bounce on the clue screen
     document.body.classList.add('no-scroll');
-  }, VIDEO_LEN_MS + 100);
+  }, VIDEO_LEN_MS + 120);
 }
 
-// If the file ends earlier than expected
+// Also handle natural 'ended' event in case duration differs
 vid.addEventListener('ended', ()=>{
   hide(player);
   content.classList.add('reveal');
