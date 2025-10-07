@@ -46,6 +46,20 @@
     border-radius:16px; padding:20px; box-shadow:0 12px 28px rgba(0,0,0,.45); }
   .clue-title{ font-weight:900; margin-bottom:6px }
   .clue-text{ white-space:pre-wrap; line-height:1.65 }
+
+  /* --- Additions (safe, scoped) --- */
+  .stack{display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:14px;}
+  .ghost{display:none; opacity:0; transition:opacity .6s ease, transform .6s ease; transform:translateY(8px);}
+  .ghost.show{display:inline-flex; opacity:1; transform:translateY(0);}
+  .btn-ghost{ 
+    -webkit-tap-highlight-color:transparent; 
+    display:inline-flex; align-items:center; gap:10px;
+    padding:14px 18px; border:0; border-radius:14px; font-weight:900; font-size:1.05rem;
+    color:#0b0f14; background:linear-gradient(135deg, #ff9f1a, #ffd166);
+    box-shadow:0 8px 18px rgba(255,159,26,.35), inset 0 1px 0 rgba(255,255,255,.35);
+    letter-spacing:0.3px;
+  }
+  .spider{filter: drop-shadow(0 2px 2px rgba(0,0,0,.35));}
 </style>
 </head>
 <body>
@@ -68,7 +82,9 @@
 <div id="content" class="layer">
   <div class="clue-card">
     <div class="clue-title">👻 Your Hunt Begins</div>
-    <div class="clue-text">Welcome to the October 2025 Halloween Scavenger Hunt.
+    <!-- wrapped original text + new button in a block so we can hide it cleanly -->
+    <div id="clueBlock">
+      <div class="clue-text">Welcome to the October 2025 Halloween Scavenger Hunt.
 
 How To Play:
 Find a hidden QR code, solve its puzzle, and unlock a clue to the next QR code.
@@ -79,6 +95,20 @@ There are no QR codes in
 - Any bedrooms.
 - The office.
 So, no need to go in those rooms to find any.</div>
+
+      <div class="stack">
+        <button id="continueSpook" class="btn-ghost">
+          <span class="spider">🕷️</span> Continue the Spook
+        </button>
+      </div>
+    </div>
+
+    <!-- Hidden "Enter the Main Hub" button that fades in -->
+    <div id="hubBlock" class="stack ghost">
+      <button id="enterHub" class="btn-ghost">
+        🎃 Enter the Main Hub
+      </button>
+    </div>
   </div>
 </div>
 
@@ -137,6 +167,27 @@ setVH();
 
 startBtn.addEventListener('click', begin);
 vid.addEventListener('ended', revealClue);
+
+/* ---- Additions: Button flow ---- */
+const clueBlock = document.getElementById('clueBlock');
+const hubBlock  = document.getElementById('hubBlock');
+const continueSpook = document.getElementById('continueSpook');
+const enterHub = document.getElementById('enterHub');
+
+if (continueSpook && hubBlock && clueBlock){
+  continueSpook.addEventListener('click', () => {
+    // Hide the text + first button
+    clueBlock.style.display = 'none';
+    // Reveal the hub button with a fade-in
+    hubBlock.classList.add('show');
+    hubBlock.style.display = 'flex';
+  });
+}
+
+// Optional: wire navigation for the hub button here (leave inert by default)
+// enterHub.addEventListener('click', () => {
+//   window.location.href = './main-hub/'; // set your hub path
+// });
 </script>
 </body>
 </html>
