@@ -82,7 +82,6 @@
 <div id="content" class="layer">
   <div class="clue-card">
     <div class="clue-title">👻 Your Hunt Begins</div>
-    <!-- wrapped original text + new button in a block so we can hide it cleanly -->
     <div id="clueBlock">
       <div class="clue-text">Welcome to the October 2025 Halloween Scavenger Hunt.
 
@@ -103,7 +102,6 @@ So, no need to go in those rooms to find any.</div>
       </div>
     </div>
 
-    <!-- Hidden "Enter the Main Hub" button that fades in -->
     <div id="hubBlock" class="stack ghost">
       <button id="enterHub" class="btn-ghost">
         🎃 Enter the Main Hub
@@ -168,7 +166,6 @@ setVH();
 startBtn.addEventListener('click', begin);
 vid.addEventListener('ended', revealClue);
 
-/* ---- Additions: Button flow ---- */
 const clueBlock = document.getElementById('clueBlock');
 const hubBlock  = document.getElementById('hubBlock');
 const continueSpook = document.getElementById('continueSpook');
@@ -176,18 +173,15 @@ const enterHub = document.getElementById('enterHub');
 
 if (continueSpook && hubBlock && clueBlock){
   continueSpook.addEventListener('click', () => {
-    // Hide the text + first button
     clueBlock.style.display = 'none';
-    // Reveal the hub button with a fade-in
     hubBlock.classList.add('show');
     hubBlock.style.display = 'flex';
   });
 }
 
-// Optional: wire navigation for the hub button here (leave inert by default)
-// enterHub.addEventListener('click', () => {
-//   window.location.href = './main-hub/'; // set your hub path
-// });
+enterHub.addEventListener('click', () => {
+  window.location.href = 'https://murresta13.github.io/main-hub/?v=3';
+});
 </script>
 </body>
 </html>
