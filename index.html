@@ -79,10 +79,10 @@
   </div>
 </div>
 
-<!-- NEW: Intermediate intro video layer shown after "Continue the Spook" -->
+<!-- Intro video overlay (after Continue) -->
 <div id="intro" class="layer" style="display:none;">
   <div class="video-wrap">
-    <video id="introVid" src="./halloween-hunt-intro.MP4" playsinline preload="auto"></video>
+    <video id="introVid" src="./halloween-hunt-intro.mp4" playsinline preload="auto"></video>
   </div>
 </div>
 
@@ -182,28 +182,26 @@ const hubBlock  = document.getElementById('hubBlock');
 const continueSpook = document.getElementById('continueSpook');
 const enterHub = document.getElementById('enterHub');
 
-// Updated flow: Continue -> play intro video -> show hub button
+// Flow: Continue -> hide content -> play intro -> on end show hub
 if (continueSpook && hubBlock && clueBlock && intro && introVid){
   continueSpook.addEventListener('click', () => {
-    // Hide text + first button
-    clueBlock.style.display = 'none';
-    // Show intro layer and play video
+    hide(content);         // ensure intro sits on top
     show(intro);
     try { introVid.currentTime = 0; } catch(e){}
     const p2 = introVid.play();
     if (p2 && typeof p2.then === 'function'){
       p2.then(()=>{}).catch(()=>{
-        // If autoplay blocked, allow user to start by tapping the video
         introVid.addEventListener('click', () => introVid.play(), { once:true });
       });
     }
   });
 
-  // When intro ends, hide it and show the hub button with fade-in
   introVid.addEventListener('ended', () => {
     hide(intro);
+    show(content);
     hubBlock.classList.add('show');
     hubBlock.style.display = 'flex';
+    if (clueBlock) clueBlock.style.display = 'none';
   });
 }
 
