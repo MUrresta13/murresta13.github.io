@@ -79,6 +79,13 @@
   </div>
 </div>
 
+<!-- NEW: Intermediate intro video layer shown after "Continue the Spook" -->
+<div id="intro" class="layer" style="display:none;">
+  <div class="video-wrap">
+    <video id="introVid" src="./halloween-hunt-intro.MP4" playsinline preload="auto"></video>
+  </div>
+</div>
+
 <div id="content" class="layer">
   <div class="clue-card">
     <div class="clue-title">👻 Your Hunt Begins</div>
@@ -116,6 +123,9 @@ const player = document.getElementById('player');
 const content = document.getElementById('content');
 const startBtn = document.getElementById('start');
 const vid = document.getElementById('vid');
+
+const intro = document.getElementById('intro');
+const introVid = document.getElementById('introVid');
 
 const VIDEO_LEN_MS = 25000;
 let fadeTimeout, endTimeout;
@@ -157,7 +167,8 @@ function begin(){
 
 function setVH(){
   const h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
-  document.querySelector('.video-wrap').style.height = h + 'px';
+  const wraps = document.querySelectorAll('.video-wrap');
+  wraps.forEach(w => w.style.height = h + 'px');
 }
 window.addEventListener('resize', setVH);
 window.addEventListener('orientationchange', setVH);
@@ -171,9 +182,26 @@ const hubBlock  = document.getElementById('hubBlock');
 const continueSpook = document.getElementById('continueSpook');
 const enterHub = document.getElementById('enterHub');
 
-if (continueSpook && hubBlock && clueBlock){
+// Updated flow: Continue -> play intro video -> show hub button
+if (continueSpook && hubBlock && clueBlock && intro && introVid){
   continueSpook.addEventListener('click', () => {
+    // Hide text + first button
     clueBlock.style.display = 'none';
+    // Show intro layer and play video
+    show(intro);
+    try { introVid.currentTime = 0; } catch(e){}
+    const p2 = introVid.play();
+    if (p2 && typeof p2.then === 'function'){
+      p2.then(()=>{}).catch(()=>{
+        // If autoplay blocked, allow user to start by tapping the video
+        introVid.addEventListener('click', () => introVid.play(), { once:true });
+      });
+    }
+  });
+
+  // When intro ends, hide it and show the hub button with fade-in
+  introVid.addEventListener('ended', () => {
+    hide(intro);
     hubBlock.classList.add('show');
     hubBlock.style.display = 'flex';
   });
